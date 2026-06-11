@@ -1,0 +1,88 @@
+name: Deploy to AWS
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  ECR_REPOSITORY: sports-ai-backend
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        id: image
+        run: |
+          IMAGE="${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}"
+          docker build -f docker/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform apply
+        working-directory: infra/aws
+        run: |
+          terraform init
+          terraform apply -auto-approve \
+            -var "environment=${{ inputs.environment }}" \
+            -var "region=${{ env.AWS_REGION }}" \
+            -var "container_image=${{ steps.image.outputs.image }}"
+
+      - name: Run database migrations
+        run: |
+          CLUSTER="sports-ai-${{ inputs.environment }}-cluster"
+          TASK_DEF="sports-ai-${{ inputs.environment }}-api"
+          SUBNETS=$(aws ec2 describe-subnets \
+            --filters "Name=tag:Name,Values=sports-ai-${{ inputs.environment }}-private-*" \
+            --query "Subnets[].SubnetId" --output text | tr '\t' ',')
+          SG=$(aws ec2 describe-security-groups \
+            --filters "Name=group-name,Values=sports-ai-${{ inputs.environment }}-ecs-*" \
+            --query "SecurityGroups[0].GroupId" --output text)
+          aws ecs run-task \
+            --cluster "$CLUSTER" \
+            --task-definition "$TASK_DEF" \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=DISABLED}" \
+            --overrides '{"containerOverrides":[{"name":"api","command":["alembic","upgrade","head"]}]}'
+
+      - name: Smoke test health endpoint
+        run: |
+          API_URL=$(cd infra/aws && terraform output -raw api_url)
+          for i in $(seq 1 12); do
+            if curl -fsS "$API_URL/api/v1/health/live"; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Waiting for API... attempt $i"
+            sleep 15
+          done
+          echo "Health check failed"
+          exit 1

@@ -1,0 +1,84 @@
+name: Deploy to Azure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  ACR_NAME: ${{ vars.ACR_NAME }}
+  IMAGE_NAME: sports-ai-backend
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push image to ACR
+        id: image
+        run: |
+          IMAGE="${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          az acr login --name "${{ env.ACR_NAME }}"
+          docker build -f docker/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform apply
+        working-directory: infra/azure
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: "true"
+        run: |
+          terraform init
+          terraform apply -auto-approve \
+            -var "environment=${{ inputs.environment }}" \
+            -var "container_image=${{ steps.image.outputs.image }}"
+
+      - name: Run database migrations
+        run: |
+          RG="sports-ai-${{ inputs.environment }}-rg"
+          az containerapp exec \
+            --resource-group "$RG" \
+            --name "sports-ai-${{ inputs.environment }}-api" \
+            --command "alembic upgrade head" || \
+          az containerapp job start \
+            --resource-group "$RG" \
+            --name "sports-ai-${{ inputs.environment }}-migrate" || true
+
+      - name: Smoke test health endpoint
+        run: |
+          API_FQDN=$(cd infra/azure && terraform output -raw api_fqdn)
+          for i in $(seq 1 12); do
+            if curl -fsS "https://$API_FQDN/api/v1/health/live"; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Waiting for API... attempt $i"
+            sleep 15
+          done
+          echo "Health check failed"
+          exit 1

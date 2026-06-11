@@ -1,0 +1,32 @@
+# Node / frontend
+node_modules/
+dist/
+.vite/
+*.local
+
+# Python / backend
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+ai-sports-intelligence-backend/storage/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
