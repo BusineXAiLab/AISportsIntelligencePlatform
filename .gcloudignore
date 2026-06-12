@@ -1,0 +1,6 @@
+ai-sports-intelligence-backend/
+.git/
+node_modules/
+dist/
+*.md
+.github/

@@ -1,0 +1,25 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - docker/Dockerfile.frontend
+      - -t
+      - ${_IMAGE}
+      - --build-arg
+      - VITE_API_URL=${_VITE_API_URL}
+      - .
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_IMAGE}
+
+substitutions:
+  _IMAGE: us-central1-docker.pkg.dev/bxailab/sports-ai-backend/frontend:v1
+  _VITE_API_URL: https://sports-ai-staging-api-el2jjte64q-uc.a.run.app/api/v1
+
+images:
+  - ${_IMAGE}
+
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -5,7 +5,7 @@ locals {
     { name = "GCS_BUCKET", value = google_storage_bucket.main.name },
     { name = "GCP_PROJECT_ID", value = var.project_id },
     { name = "SECRETS_PROVIDER", value = "env" },
-    { name = "CORS_ORIGINS", value = jsonencode(var.cors_origins) },
+    { name = "CORS_ORIGINS", value = jsonencode(concat(var.cors_origins, [google_cloud_run_v2_service.frontend.uri])) },
     { name = "SPORTS_DATA_PROVIDER", value = "mock" },
   ]
 
