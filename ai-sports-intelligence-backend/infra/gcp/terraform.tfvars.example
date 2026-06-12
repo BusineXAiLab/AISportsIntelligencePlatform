@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars and adjust before apply.
+project_id     = "bxailab"
+project_number = "143125406102"
+environment    = "staging"
+region         = "us-central1"
+
+# Set after building and pushing the first image:
+# container_image = "us-central1-docker.pkg.dev/bxailab/sports-ai-backend/backend:v1"
+
+cors_origins = [
+  "https://bxailab.web.app",
+  "http://localhost:5173",
+]

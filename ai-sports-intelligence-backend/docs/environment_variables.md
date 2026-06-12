@@ -66,10 +66,11 @@ sourced from AWS Secrets Manager or Azure Key Vault (see `SECRETS_PROVIDER`).
 
 | Variable | Description |
 | --- | --- |
-| OBJECT_STORAGE_PROVIDER | `local` / `s3` / `azure_blob` |
+| OBJECT_STORAGE_PROVIDER | `local` / `s3` / `azure_blob` / `gcs` |
 | LOCAL_STORAGE_PATH | Local directory (local provider) |
 | AWS_REGION / AWS_S3_BUCKET | S3 settings |
 | AZURE_STORAGE_CONNECTION_STRING / AZURE_BLOB_CONTAINER | Azure Blob settings |
+| GCP_PROJECT_ID / GCS_BUCKET | Google Cloud Storage settings |
 
 ## Secrets backend
 

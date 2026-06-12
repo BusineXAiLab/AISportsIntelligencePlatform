@@ -99,10 +99,38 @@ class AzureBlobStorageClient(ObjectStorageClient):
         await asyncio.to_thread(self.container.delete_blob, key)
 
 
+class GCSStorageClient(ObjectStorageClient):
+    def __init__(self) -> None:
+        from google.cloud import storage
+
+        self.bucket_name = settings.GCS_BUCKET
+        self.client = storage.Client(project=settings.GCP_PROJECT_ID or None)
+        self.bucket = self.client.bucket(self.bucket_name)
+
+    async def upload_file(self, key: str, content: bytes, content_type: str) -> str:
+        blob = self.bucket.blob(key)
+
+        def _upload() -> None:
+            blob.upload_from_string(content, content_type=content_type)
+
+        await asyncio.to_thread(_upload)
+        return f"gs://{self.bucket_name}/{key}"
+
+    async def download_file(self, key: str) -> bytes:
+        blob = self.bucket.blob(key)
+        return await asyncio.to_thread(blob.download_as_bytes)
+
+    async def delete_file(self, key: str) -> None:
+        blob = self.bucket.blob(key)
+        await asyncio.to_thread(blob.delete)
+
+
 def get_storage_client() -> ObjectStorageClient:
     provider = settings.OBJECT_STORAGE_PROVIDER
     if provider == "s3":
         return S3StorageClient()
     if provider == "azure_blob":
         return AzureBlobStorageClient()
+    if provider == "gcs":
+        return GCSStorageClient()
     return LocalStorageClient()

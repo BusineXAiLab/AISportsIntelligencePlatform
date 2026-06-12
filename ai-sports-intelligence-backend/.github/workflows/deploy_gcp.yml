@@ -1,0 +1,84 @@
+name: Deploy to GCP
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        default: staging
+        type: choice
+        options: [staging, production]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  PROJECT_ID: bxailab
+  REGION: us-central1
+  IMAGE_NAME: backend
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push image
+        id: image
+        run: |
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/sports-ai-${{ env.IMAGE_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          docker build -f docker/Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+        working-directory: ai-sports-intelligence-backend
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform apply
+        working-directory: ai-sports-intelligence-backend/infra/gcp
+        run: |
+          terraform init
+          terraform apply -auto-approve \
+            -var "project_id=${{ env.PROJECT_ID }}" \
+            -var "environment=${{ inputs.environment }}" \
+            -var "region=${{ env.REGION }}" \
+            -var "container_image=${{ steps.image.outputs.image }}"
+
+      - name: Run database migrations
+        run: |
+          gcloud run jobs execute "sports-ai-${{ inputs.environment }}-migrate" \
+            --region "${{ env.REGION }}" \
+            --project "${{ env.PROJECT_ID }}" \
+            --wait
+
+      - name: Smoke test health endpoint
+        working-directory: ai-sports-intelligence-backend/infra/gcp
+        run: |
+          API_URL=$(terraform output -raw api_url)
+          for i in $(seq 1 12); do
+            if curl -fsS "$API_URL/api/v1/health/live"; then
+              echo "Health check passed"
+              exit 0
+            fi
+            echo "Waiting for API... attempt $i"
+            sleep 15
+          done
+          echo "Health check failed"
+          exit 1

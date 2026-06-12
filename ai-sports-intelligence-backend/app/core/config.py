@@ -52,12 +52,14 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "gpt-4o-mini"
 
     # Object storage
-    OBJECT_STORAGE_PROVIDER: str = "local"  # local | s3 | azure_blob
+    OBJECT_STORAGE_PROVIDER: str = "local"  # local | s3 | azure_blob | gcs
     LOCAL_STORAGE_PATH: str = "./storage"
     AWS_REGION: str = ""
     AWS_S3_BUCKET: str = ""
     AZURE_STORAGE_CONNECTION_STRING: str = ""
     AZURE_BLOB_CONTAINER: str = ""
+    GCP_PROJECT_ID: str = ""
+    GCS_BUCKET: str = ""
 
     # Secrets backend
     SECRETS_PROVIDER: str = "env"  # env | aws_secrets_manager | azure_key_vault

@@ -100,4 +100,5 @@ make typecheck
 - [docs/architecture.md](docs/architecture.md) — system design
 - [docs/deployment_aws.md](docs/deployment_aws.md) — AWS deployment
 - [docs/deployment_azure.md](docs/deployment_azure.md) — Azure deployment
+- [docs/deployment_gcp.md](docs/deployment_gcp.md) — GCP deployment (project `bxailab`)
 - [docs/environment_variables.md](docs/environment_variables.md) — configuration
