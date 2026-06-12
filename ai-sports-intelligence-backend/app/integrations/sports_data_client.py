@@ -1,8 +1,7 @@
 """Sports data provider abstraction.
 
-The active provider is selected via SPORTS_DATA_PROVIDER. New providers
-(API-Football, Sportmonks, Opta, ...) implement SportsDataProvider and are
-registered in PROVIDERS.
+The active provider is selected via SPORTS_DATA_PROVIDER. Built-in providers:
+`mock`, `http` (generic skeleton), `football_data_org` (free football-data.org tier).
 """
 import hashlib
 import random
@@ -27,6 +26,8 @@ class FixtureDTO:
     venue: str | None = None
     referee: str | None = None
     country: str | None = None
+    home_team_provider_id: str | None = None
+    away_team_provider_id: str | None = None
 
 
 @dataclass
@@ -208,9 +209,173 @@ class HttpSportsDataProvider(SportsDataProvider):
         return TeamFormDTO(**data)
 
 
+_FOOTBALL_DATA_FINISHED = {"FINISHED", "AWARDED"}
+_FOOTBALL_DATA_SCHEDULED = {
+    "SCHEDULED",
+    "TIMED",
+    "IN_PLAY",
+    "PAUSED",
+    "SUSPENDED",
+    "LIVE",
+}
+
+
+class FootballDataOrgProvider(SportsDataProvider):
+    """Free-tier provider for major European leagues via football-data.org v4."""
+
+    name = "football_data_org"
+
+    def __init__(self) -> None:
+        if not settings.SPORTS_DATA_API_KEY:
+            raise ExternalServiceError("SPORTS_DATA_API_KEY is not configured")
+        self.base_url = (
+            settings.SPORTS_DATA_BASE_URL or "https://api.football-data.org/v4"
+        ).rstrip("/")
+        self.api_key = settings.SPORTS_DATA_API_KEY
+
+    async def _get(self, path: str, params: dict | None = None) -> dict:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(
+                f"{self.base_url}{path}",
+                params=params,
+                headers={"X-Auth-Token": self.api_key},
+            )
+        if response.status_code == 429:
+            raise ExternalServiceError("Sports data provider rate limit exceeded")
+        if response.status_code != 200:
+            raise ExternalServiceError(
+                f"Sports data provider returned {response.status_code}: {response.text[:200]}"
+            )
+        return response.json()
+
+    def _map_match_to_fixture(self, match: dict) -> FixtureDTO:
+        competition = match.get("competition") or {}
+        home = match.get("homeTeam") or {}
+        away = match.get("awayTeam") or {}
+        referees = match.get("referees") or []
+        venue = match.get("venue")
+        venue_name = venue if isinstance(venue, str) else (venue or {}).get("name")
+        kickoff_raw = match.get("utcDate", "")
+        kickoff = datetime.fromisoformat(kickoff_raw.replace("Z", "+00:00"))
+        return FixtureDTO(
+            provider_fixture_id=str(match["id"]),
+            league_code=competition.get("code") or str(competition.get("id", "UNK")),
+            league_name=competition.get("name", "Unknown"),
+            home_team=home.get("name", "Home"),
+            away_team=away.get("name", "Away"),
+            kickoff_time=kickoff,
+            venue=venue_name,
+            referee=referees[0].get("name") if referees else None,
+            country=(match.get("area") or {}).get("name"),
+            home_team_provider_id=str(home["id"]) if home.get("id") is not None else None,
+            away_team_provider_id=str(away["id"]) if away.get("id") is not None else None,
+        )
+
+    async def _matches_for_date(self, target_date: date) -> list[dict]:
+        data = await self._get(
+            "/matches",
+            {
+                "dateFrom": target_date.isoformat(),
+                "dateTo": target_date.isoformat(),
+            },
+        )
+        return data.get("matches", [])
+
+    async def get_fixtures(self, target_date: date) -> list[FixtureDTO]:
+        fixtures: list[FixtureDTO] = []
+        for match in await self._matches_for_date(target_date):
+            status = match.get("status", "")
+            if status in _FOOTBALL_DATA_FINISHED:
+                continue
+            fixtures.append(self._map_match_to_fixture(match))
+        return fixtures
+
+    async def get_results(self, target_date: date) -> list[ResultDTO]:
+        results: list[ResultDTO] = []
+        for match in await self._matches_for_date(target_date):
+            if match.get("status") not in _FOOTBALL_DATA_FINISHED:
+                continue
+            score = match.get("score") or {}
+            full_time = score.get("fullTime") or {}
+            half_time = score.get("halfTime") or {}
+            home_score = full_time.get("home")
+            away_score = full_time.get("away")
+            if home_score is None or away_score is None:
+                continue
+            results.append(
+                ResultDTO(
+                    provider_fixture_id=str(match["id"]),
+                    home_score=int(home_score),
+                    away_score=int(away_score),
+                    half_time_home_score=(
+                        int(half_time["home"]) if half_time.get("home") is not None else None
+                    ),
+                    half_time_away_score=(
+                        int(half_time["away"]) if half_time.get("away") is not None else None
+                    ),
+                )
+            )
+        return results
+
+    async def get_team_form(self, team_id: str) -> TeamFormDTO:
+        if not team_id.isdigit():
+            return TeamFormDTO(
+                team_name=team_id,
+                matches_played=0,
+                wins=0,
+                draws=0,
+                losses=0,
+                goals_scored=0,
+                goals_conceded=0,
+                form_string="",
+            )
+        data = await self._get(
+            f"/teams/{team_id}/matches",
+            {"status": "FINISHED", "limit": 5},
+        )
+        matches = data.get("matches", [])
+        outcomes: list[str] = []
+        goals_scored = 0
+        goals_conceded = 0
+        team_id_int = int(team_id)
+        for match in matches:
+            home = match.get("homeTeam") or {}
+            away = match.get("awayTeam") or {}
+            full_time = (match.get("score") or {}).get("fullTime") or {}
+            home_score = full_time.get("home")
+            away_score = full_time.get("away")
+            if home_score is None or away_score is None:
+                continue
+            is_home = home.get("id") == team_id_int
+            scored = int(home_score if is_home else away_score)
+            conceded = int(away_score if is_home else home_score)
+            goals_scored += scored
+            goals_conceded += conceded
+            if scored > conceded:
+                outcomes.append("W")
+            elif scored < conceded:
+                outcomes.append("L")
+            else:
+                outcomes.append("D")
+        wins = outcomes.count("W")
+        draws = outcomes.count("D")
+        losses = outcomes.count("L")
+        return TeamFormDTO(
+            team_name=team_id,
+            matches_played=len(outcomes),
+            wins=wins,
+            draws=draws,
+            losses=losses,
+            goals_scored=goals_scored,
+            goals_conceded=goals_conceded,
+            form_string="".join(outcomes),
+        )
+
+
 PROVIDERS: dict[str, type[SportsDataProvider]] = {
     "mock": MockSportsDataProvider,
     "http": HttpSportsDataProvider,
+    "football_data_org": FootballDataOrgProvider,
 }
 
 

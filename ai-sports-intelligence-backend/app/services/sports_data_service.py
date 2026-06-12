@@ -39,12 +39,20 @@ class SportsDataService:
             await self.db.flush()
         return league
 
-    async def _get_or_create_team(self, name: str, league: League) -> Team:
+    async def _get_or_create_team(
+        self, name: str, league: League, provider_team_id: str | None = None
+    ) -> Team:
         team = await self.matches.get_team_by_name(name)
         if team is None:
-            team = Team(name=name, league_id=league.id, provider_team_id=name)
+            team = Team(
+                name=name,
+                league_id=league.id,
+                provider_team_id=provider_team_id or name,
+            )
             self.db.add(team)
             await self.db.flush()
+        elif provider_team_id and team.provider_team_id != provider_team_id:
+            team.provider_team_id = provider_team_id
         return team
 
     async def ingest_fixtures(self, target_date: date) -> int:
@@ -58,8 +66,12 @@ class SportsDataService:
                 existing.referee = dto.referee
                 continue
             league = await self._get_or_create_league(dto)
-            home = await self._get_or_create_team(dto.home_team, league)
-            away = await self._get_or_create_team(dto.away_team, league)
+            home = await self._get_or_create_team(
+                dto.home_team, league, dto.home_team_provider_id
+            )
+            away = await self._get_or_create_team(
+                dto.away_team, league, dto.away_team_provider_id
+            )
             venue = None
             if dto.venue:
                 venue = Venue(name=dto.venue)

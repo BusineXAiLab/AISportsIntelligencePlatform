@@ -42,8 +42,10 @@ class PredictionPipeline:
         self.provider = get_sports_data_provider()
 
     async def build_features(self, fixture: Fixture) -> FeatureVector:
-        home_form = await self.provider.get_team_form(fixture.home_team.name)
-        away_form = await self.provider.get_team_form(fixture.away_team.name)
+        home_key = fixture.home_team.provider_team_id or fixture.home_team.name
+        away_key = fixture.away_team.provider_team_id or fixture.away_team.name
+        home_form = await self.provider.get_team_form(home_key)
+        away_form = await self.provider.get_team_form(away_key)
         return build_feature_vector(
             fixture_id=str(fixture.id),
             home_form=home_form.__dict__,

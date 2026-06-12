@@ -6,7 +6,8 @@ locals {
     { name = "GCP_PROJECT_ID", value = var.project_id },
     { name = "SECRETS_PROVIDER", value = "env" },
     { name = "CORS_ORIGINS", value = jsonencode(concat(var.cors_origins, [google_cloud_run_v2_service.frontend.uri])) },
-    { name = "SPORTS_DATA_PROVIDER", value = "mock" },
+    { name = "SPORTS_DATA_PROVIDER", value = var.sports_data_provider },
+    { name = "SPORTS_DATA_BASE_URL", value = var.sports_data_base_url },
   ]
 
   secret_env = [
@@ -21,6 +22,10 @@ locals {
     {
       name   = "SECRET_KEY"
       secret = google_secret_manager_secret.secret_key.secret_id
+    },
+    {
+      name   = "SPORTS_DATA_API_KEY"
+      secret = google_secret_manager_secret.sports_data_api_key.secret_id
     },
   ]
 

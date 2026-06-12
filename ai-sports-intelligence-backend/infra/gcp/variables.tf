@@ -92,3 +92,22 @@ variable "cors_origins" {
   type        = list(string)
   default     = ["https://bxailab.web.app", "http://localhost:5173"]
 }
+
+variable "sports_data_provider" {
+  description = "Sports data provider (mock, http, football_data_org)"
+  type        = string
+  default     = "football_data_org"
+}
+
+variable "sports_data_base_url" {
+  description = "Sports data API base URL"
+  type        = string
+  default     = "https://api.football-data.org/v4"
+}
+
+variable "sports_data_api_key" {
+  description = "Sports data API key (football-data.org X-Auth-Token)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}

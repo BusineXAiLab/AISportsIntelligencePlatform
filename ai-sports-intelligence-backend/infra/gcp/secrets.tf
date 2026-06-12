@@ -54,6 +54,23 @@ resource "google_secret_manager_secret_version" "secret_key" {
   secret_data = random_password.secret_key.result
 }
 
+resource "google_secret_manager_secret" "sports_data_api_key" {
+  secret_id = "${local.name_prefix}-sports-data-api-key"
+
+  replication {
+    auto {}
+  }
+
+  labels = local.labels
+
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_secret_manager_secret_version" "sports_data_api_key" {
+  secret      = google_secret_manager_secret.sports_data_api_key.id
+  secret_data = var.sports_data_api_key
+}
+
 resource "google_secret_manager_secret" "app_config" {
   secret_id = "${local.name_prefix}-app-config"
 
@@ -79,6 +96,8 @@ resource "google_secret_manager_secret_version" "app_config" {
     TELEGRAM_PUBLIC_CHANNEL_ID     = ""
     TELEGRAM_VIP_CHANNEL_ID        = ""
     LLM_API_KEY                    = ""
+    SPORTS_DATA_PROVIDER           = "football_data_org"
+    SPORTS_DATA_BASE_URL           = "https://api.football-data.org/v4"
     SPORTS_DATA_API_KEY            = ""
   })
 }

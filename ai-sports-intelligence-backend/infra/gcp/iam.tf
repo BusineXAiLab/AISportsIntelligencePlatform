@@ -33,6 +33,7 @@ resource "google_secret_manager_secret_iam_member" "app_secrets" {
     redis_url    = google_secret_manager_secret.redis_url
     secret_key   = google_secret_manager_secret.secret_key
     app_config   = google_secret_manager_secret.app_config
+    sports_data  = google_secret_manager_secret.sports_data_api_key
   }
 
   secret_id = each.value.id

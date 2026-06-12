@@ -41,7 +41,7 @@ celery_app.conf.beat_schedule = {
     },
     "ingest-results-hourly": {
         "task": "jobs.ingest_results",
-        "schedule": crontab(minute=15),
+        "schedule": crontab(minute=15, hour="*/2"),
     },
     "generate-predictions-daily": {
         "task": "jobs.generate_predictions",

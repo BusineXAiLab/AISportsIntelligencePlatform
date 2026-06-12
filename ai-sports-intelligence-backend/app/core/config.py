@@ -41,9 +41,9 @@ class Settings(BaseSettings):
     TELEGRAM_WEBHOOK_SECRET: str = ""
 
     # Sports data
-    SPORTS_DATA_PROVIDER: str = "mock"
+    SPORTS_DATA_PROVIDER: str = "mock"  # mock | http | football_data_org
     SPORTS_DATA_API_KEY: str = ""
-    SPORTS_DATA_BASE_URL: str = ""
+    SPORTS_DATA_BASE_URL: str = ""  # defaults to https://api.football-data.org/v4
 
     # LLM
     LLM_PROVIDER: str = "openai_compatible"

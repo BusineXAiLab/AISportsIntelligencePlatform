@@ -49,9 +49,11 @@ sourced from AWS Secrets Manager or Azure Key Vault (see `SECRETS_PROVIDER`).
 
 | Variable | Description |
 | --- | --- |
-| SPORTS_DATA_PROVIDER | `mock` (default) or `http` |
-| SPORTS_DATA_API_KEY | Vendor API key (http provider) |
-| SPORTS_DATA_BASE_URL | Vendor base URL (http provider) |
+| SPORTS_DATA_PROVIDER | `mock` (default) / `http` / `football_data_org` |
+| SPORTS_DATA_API_KEY | Vendor API key (`X-Auth-Token` for football-data.org) |
+| SPORTS_DATA_BASE_URL | Vendor base URL (defaults to `https://api.football-data.org/v4`) |
+
+See [sports_data_football_data_org.md](sports_data_football_data_org.md) for free-tier setup.
 
 ## LLM provider
 
