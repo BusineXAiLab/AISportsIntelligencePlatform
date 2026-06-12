@@ -101,4 +101,5 @@ make typecheck
 - [docs/deployment_aws.md](docs/deployment_aws.md) — AWS deployment
 - [docs/deployment_azure.md](docs/deployment_azure.md) — Azure deployment
 - [docs/deployment_gcp.md](docs/deployment_gcp.md) — GCP deployment (project `bxailab`)
+- [docs/sports_data_football_data_org.md](docs/sports_data_football_data_org.md) — free live data via football-data.org
 - [docs/environment_variables.md](docs/environment_variables.md) — configuration

@@ -9,11 +9,16 @@ from app.services.sports_data_service import SportsDataService
 async def _ingest(days_back: int) -> dict:
     async with get_session() as session:
         service = SportsDataService(session)
-        total = 0
         today = datetime.now(UTC).date()
         try:
-            for offset in range(days_back + 1):
-                total += await service.ingest_results(today - timedelta(days=offset))
+            if hasattr(service.provider, "get_results_range"):
+                total = await service.ingest_results_range(
+                    today - timedelta(days=days_back), today
+                )
+            else:
+                total = 0
+                for offset in range(days_back + 1):
+                    total += await service.ingest_results(today - timedelta(days=offset))
             await session.commit()
         except Exception as exc:
             await session.rollback()

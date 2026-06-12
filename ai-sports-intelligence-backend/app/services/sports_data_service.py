@@ -1,5 +1,5 @@
 """Ingestion of fixtures and results from the configured sports data provider."""
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.integrations.sports_data_client import (
     FixtureDTO,
+    ResultDTO,
     SportsDataProvider,
     get_sports_data_provider,
 )
@@ -55,10 +56,8 @@ class SportsDataService:
             team.provider_team_id = provider_team_id
         return team
 
-    async def ingest_fixtures(self, target_date: date) -> int:
-        """Upsert fixtures for a date. Returns the number of new fixtures."""
+    async def _persist_fixtures(self, fixtures: list[FixtureDTO]) -> int:
         created = 0
-        fixtures = await self.provider.get_fixtures(target_date)
         for dto in fixtures:
             existing = await self.matches.get_by_provider_id(dto.provider_fixture_id)
             if existing is not None:
@@ -91,14 +90,37 @@ class SportsDataService:
             )
             created += 1
         await self.db.flush()
+        return created
+
+    async def ingest_fixtures(self, target_date: date) -> int:
+        """Upsert fixtures for a date. Returns the number of new fixtures."""
+        created = await self._persist_fixtures(await self.provider.get_fixtures(target_date))
         await self._mark_feed("fixtures", success=True)
         logger.info("fixtures_ingested", date=str(target_date), created=created)
         return created
 
-    async def ingest_results(self, target_date: date) -> int:
-        """Attach results to finished fixtures. Returns the number settled."""
+    async def ingest_fixtures_range(self, date_from: date, date_to: date) -> int:
+        """Upsert fixtures across a date range (single API call when supported)."""
+        if hasattr(self.provider, "get_fixtures_range"):
+            fixtures = await self.provider.get_fixtures_range(date_from, date_to)
+        else:
+            fixtures: list[FixtureDTO] = []
+            current = date_from
+            while current <= date_to:
+                fixtures.extend(await self.provider.get_fixtures(current))
+                current += timedelta(days=1)
+        created = await self._persist_fixtures(fixtures)
+        await self._mark_feed("fixtures", success=True)
+        logger.info(
+            "fixtures_ingested_range",
+            date_from=str(date_from),
+            date_to=str(date_to),
+            created=created,
+        )
+        return created
+
+    async def _persist_results(self, results: list[ResultDTO]) -> int:
         updated = 0
-        results = await self.provider.get_results(target_date)
         for dto in results:
             fixture = await self.matches.get_by_provider_id(dto.provider_fixture_id)
             if fixture is None or fixture.result is not None:
@@ -117,8 +139,33 @@ class SportsDataService:
             )
             updated += 1
         await self.db.flush()
+        return updated
+
+    async def ingest_results(self, target_date: date) -> int:
+        """Attach results to finished fixtures. Returns the number settled."""
+        updated = await self._persist_results(await self.provider.get_results(target_date))
         await self._mark_feed("results", success=True)
         logger.info("results_ingested", date=str(target_date), updated=updated)
+        return updated
+
+    async def ingest_results_range(self, date_from: date, date_to: date) -> int:
+        """Attach results across a date range (single API call when supported)."""
+        if hasattr(self.provider, "get_results_range"):
+            results = await self.provider.get_results_range(date_from, date_to)
+        else:
+            results = []
+            current = date_from
+            while current <= date_to:
+                results.extend(await self.provider.get_results(current))
+                current += timedelta(days=1)
+        updated = await self._persist_results(results)
+        await self._mark_feed("results", success=True)
+        logger.info(
+            "results_ingested_range",
+            date_from=str(date_from),
+            date_to=str(date_to),
+            updated=updated,
+        )
         return updated
 
     async def _mark_feed(self, feed_type: str, success: bool, error: str | None = None) -> None:
@@ -141,7 +188,7 @@ class SportsDataService:
             feed.last_error = None
         else:
             feed.last_failure_at = now
-            feed.consecutive_failures += 1
+            feed.consecutive_failures = (feed.consecutive_failures or 0) + 1
             feed.last_error = (error or "")[:1024] or None
             feed.status = (
                 DataFeedStatus.DOWN if feed.consecutive_failures >= 3 else DataFeedStatus.DEGRADED

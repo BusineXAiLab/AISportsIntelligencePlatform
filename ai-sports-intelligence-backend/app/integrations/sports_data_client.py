@@ -271,15 +271,53 @@ class FootballDataOrgProvider(SportsDataProvider):
             away_team_provider_id=str(away["id"]) if away.get("id") is not None else None,
         )
 
-    async def _matches_for_date(self, target_date: date) -> list[dict]:
+    async def _matches_between(self, date_from: date, date_to: date) -> list[dict]:
         data = await self._get(
             "/matches",
             {
-                "dateFrom": target_date.isoformat(),
-                "dateTo": target_date.isoformat(),
+                "dateFrom": date_from.isoformat(),
+                "dateTo": date_to.isoformat(),
             },
         )
         return data.get("matches", [])
+
+    async def _matches_for_date(self, target_date: date) -> list[dict]:
+        return await self._matches_between(target_date, target_date)
+
+    async def get_fixtures_range(self, date_from: date, date_to: date) -> list[FixtureDTO]:
+        fixtures: list[FixtureDTO] = []
+        for match in await self._matches_between(date_from, date_to):
+            if match.get("status") in _FOOTBALL_DATA_FINISHED:
+                continue
+            fixtures.append(self._map_match_to_fixture(match))
+        return fixtures
+
+    async def get_results_range(self, date_from: date, date_to: date) -> list[ResultDTO]:
+        results: list[ResultDTO] = []
+        for match in await self._matches_between(date_from, date_to):
+            if match.get("status") not in _FOOTBALL_DATA_FINISHED:
+                continue
+            score = match.get("score") or {}
+            full_time = score.get("fullTime") or {}
+            half_time = score.get("halfTime") or {}
+            home_score = full_time.get("home")
+            away_score = full_time.get("away")
+            if home_score is None or away_score is None:
+                continue
+            results.append(
+                ResultDTO(
+                    provider_fixture_id=str(match["id"]),
+                    home_score=int(home_score),
+                    away_score=int(away_score),
+                    half_time_home_score=(
+                        int(half_time["home"]) if half_time.get("home") is not None else None
+                    ),
+                    half_time_away_score=(
+                        int(half_time["away"]) if half_time.get("away") is not None else None
+                    ),
+                )
+            )
+        return results
 
     async def get_fixtures(self, target_date: date) -> list[FixtureDTO]:
         fixtures: list[FixtureDTO] = []
