@@ -167,9 +167,17 @@ resource "google_cloud_run_v2_service" "worker" {
     }
 
     containers {
-      name    = "worker"
-      image   = var.container_image
-      command = ["celery", "-A", "app.jobs.celery_app:celery_app", "worker", "--loglevel=INFO"]
+      name  = "worker"
+      image = var.container_image
+      command = [
+        "sh",
+        "-c",
+        "python -m http.server 8080 & exec celery -A app.jobs.celery_app:celery_app worker --loglevel=INFO",
+      ]
+
+      ports {
+        container_port = 8080
+      }
 
       resources {
         limits = {
@@ -177,6 +185,16 @@ resource "google_cloud_run_v2_service" "worker" {
           memory = "1Gi"
         }
         cpu_idle = false
+      }
+
+      startup_probe {
+        http_get {
+          path = "/"
+          port = 8080
+        }
+        initial_delay_seconds = 5
+        period_seconds        = 10
+        failure_threshold     = 12
       }
 
       volume_mounts {
@@ -241,16 +259,34 @@ resource "google_cloud_run_v2_service" "beat" {
     }
 
     containers {
-      name    = "beat"
-      image   = var.container_image
-      command = ["celery", "-A", "app.jobs.celery_app:celery_app", "beat", "--loglevel=INFO"]
+      name  = "beat"
+      image = var.container_image
+      command = [
+        "sh",
+        "-c",
+        "python -m http.server 8080 & exec celery -A app.jobs.celery_app:celery_app beat --loglevel=INFO",
+      ]
+
+      ports {
+        container_port = 8080
+      }
 
       resources {
         limits = {
-          cpu    = "0.5"
+          cpu    = "1"
           memory = "512Mi"
         }
         cpu_idle = false
+      }
+
+      startup_probe {
+        http_get {
+          path = "/"
+          port = 8080
+        }
+        initial_delay_seconds = 5
+        period_seconds        = 10
+        failure_threshold     = 12
       }
 
       volume_mounts {

@@ -27,19 +27,15 @@ resource "google_storage_bucket_iam_member" "app_storage" {
   member = "serviceAccount:${google_service_account.app.email}"
 }
 
-locals {
-  secret_ids = [
-    google_secret_manager_secret.database_url.id,
-    google_secret_manager_secret.redis_url.id,
-    google_secret_manager_secret.secret_key.id,
-    google_secret_manager_secret.app_config.id,
-  ]
-}
-
 resource "google_secret_manager_secret_iam_member" "app_secrets" {
-  for_each = toset(local.secret_ids)
+  for_each = {
+    database_url = google_secret_manager_secret.database_url
+    redis_url    = google_secret_manager_secret.redis_url
+    secret_key   = google_secret_manager_secret.secret_key
+    app_config   = google_secret_manager_secret.app_config
+  }
 
-  secret_id = each.value
+  secret_id = each.value.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.app.email}"
 }

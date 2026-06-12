@@ -13,7 +13,7 @@ resource "google_compute_subnetwork" "main" {
 }
 
 resource "google_vpc_access_connector" "main" {
-  name          = "${local.name_prefix}-connector"
+  name          = substr(replace("${local.name_prefix}-vpc", "_", "-"), 0, 25)
   region        = var.region
   ip_cidr_range = "10.8.0.0/28"
   network       = google_compute_network.main.name
